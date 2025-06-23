@@ -78,6 +78,10 @@ def fetch_episodes():
     return episodes
 
 def generate_rss(episodes, filename=OUTPUT_FILE):
+    ITUNES_NS = "http://www.itunes.com/dtds/podcast-1.0.dtd"
+    ATOM_NS = "http://www.w3.org/2005/Atom"
+    CONTENT_NS = "http://purl.org/rss/1.0/modules/content/"
+
     fg = FeedGenerator()
     fg.title(FEED_TITLE)
     fg.link(href=PROGRAM_URL)
@@ -87,20 +91,19 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     fg.image(url=channel_image, title=FEED_TITLE, link=PROGRAM_URL)
     fg.language('sv-SE')
     fg.generator('python-feedgen')
-    
-    # Lägg till Apple-kategori ("Society & Culture" är ett vanligt val)
-    # Kan bytas mot det du tycker passar bättre!
     fg.category(term="Society & Culture")
-    
-    # Lägg till explicit-flagga
-    fg.podcast.itunes_explicit('no') if hasattr(fg, 'podcast') else None
 
+    # (itunes:explicit kräver hack, vi gör det i efterbearbetningen)
+    # Samma för itunes:category och kanalbild
+
+    # Skapa lookup för bild per guid (länk)
+    guid_to_image = {}
     for ep in episodes:
         fe = fg.add_entry()
         fe.title(ep["title"])
         fe.link(href=ep["link"])
         fe.pubDate(ep["date"])
-        fe.guid(ep["link"], permalink=True)  # Unik GUID, använd permalänk
+        fe.guid(ep["link"], permalink=True)
         if ep["description"]:
             fe.description(ep["description"])
         if ep.get("audio"):
@@ -108,68 +111,62 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
         if ep.get("image"):
             html = f'<img src="{ep["image"]}" alt="{ep["title"]}"/><p>{ep["description"]}</p>'
             fe.content(content=html, type="CDATA")
+            guid_to_image[ep["link"]] = ep["image"]
 
     rss_bytes = fg.rss_str(pretty=True)
 
     # Registrera namespaces innan vi bygger vidare
-    ET.register_namespace("content", "http://purl.org/rss/1.0/modules/content/")
+    ET.register_namespace("content", CONTENT_NS)
     ET.register_namespace("itunes", ITUNES_NS)
-    ET.register_namespace("atom", "http://www.w3.org/2005/Atom")
+    ET.register_namespace("atom", ATOM_NS)
 
     tree = ET.parse(BytesIO(rss_bytes))
     root = tree.getroot()
     channel = root.find("channel")
 
-    # 1. Lägg till <atom:link rel="self" ...> i channel
-    atom_link = ET.Element("{http://www.w3.org/2005/Atom}link", {
+    # 1. <atom:link rel="self" ...>
+    atom_link = ET.Element("{%s}link" % ATOM_NS, {
         "href": "https://yourserv.er/podcast.xml",
         "rel": "self",
         "type": "application/rss+xml"
     })
     channel.insert(0, atom_link)
 
-    # 2. Lägg till <language> i channel
+    # 2. <language> om den inte finns
     if channel.find("language") is None:
         language = ET.Element("language")
         language.text = "sv-SE"
         channel.insert(1, language)
 
-    # 3. Lägg till <itunes:category>
+    # 3. <itunes:category>
     ET.SubElement(
         channel,
-        "{http://www.itunes.com/dtds/podcast-1.0.dtd}category",
+        "{%s}category" % ITUNES_NS,
         {"text": "Society & Culture"},
     )
 
-    # 4. Lägg till <itunes:explicit>
+    # 4. <itunes:explicit>
     ET.SubElement(
         channel,
-        "{http://www.itunes.com/dtds/podcast-1.0.dtd}explicit"
+        "{%s}explicit" % ITUNES_NS
     ).text = "no"
 
-    # 5. Lägg till kanalbild som <itunes:image> (INNAN items)
+    # 5. <itunes:image> för kanal
     itunes_image = ET.Element("{%s}image" % ITUNES_NS, {"href": channel_image})
     channel.insert(len(channel.findall("./*")) - len(channel.findall("./item")), itunes_image)
 
-    # 6. Lägg till per-avsnitt itunes:image
-    for ep, item in zip(episodes, channel.findall("item")):
-        if ep.get("image"):
+    # 6. <itunes:image> per avsnitt, kopplat via GUID/LINK
+    for item in channel.findall("item"):
+        guid = item.find("guid")
+        if guid is not None and guid.text in guid_to_image:
             ET.SubElement(
                 item,
                 "{%s}image" % ITUNES_NS,
-                {"href": ep["image"]},
+                {"href": guid_to_image[guid.text]},
             )
 
-    # 7. Lägg till <guid> (om saknas) – redundans, men för säkerhets skull
-    for ep, item in zip(episodes, channel.findall("item")):
-        if item.find("guid") is None:
-            guid = ET.Element("guid")
-            guid.text = ep["link"]
-            guid.set("isPermaLink", "true")
-            item.insert(0, guid)
-
-    # 8. CDATA-wrap för content:encoded
-    for encoded in root.findall(".//{http://purl.org/rss/1.0/modules/content/}encoded"):
+    # 7. CDATA för <content:encoded>
+    for encoded in root.findall(".//{%s}encoded" % CONTENT_NS):
         if encoded.text and not isinstance(encoded.text, ET.CDATA):
             encoded.text = ET.CDATA(encoded.text)
 
