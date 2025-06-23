@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-from io import BytesIO
 import re
+from io import BytesIO
 
 import requests
 from bs4 import BeautifulSoup
@@ -148,6 +148,18 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
 
     xml = re.sub(r'(</item>)', r'\1\n', xml)
     xml = re.sub(r'    <itunes', '      <itunes', xml)
+    xml = re.sub(r'(\S)(</item>)', r'\1\n    \2', xml)
+    # 1. Ta bort ALLA xmlns:itunes (och ns0:itunes, och xmlns:ns0) överallt:
+    xml = re.sub(r'\s+xmlns:itunes="[^"]+"', '', xml)
+    xml = re.sub(r'\s+ns\d+:itunes="[^"]+"', '', xml)
+    xml = re.sub(r'\s+xmlns:ns\d+="[^"]+"', '', xml)
+    # 2. Lägg TILL xmlns:itunes EN gång, direkt efter <rss ...>
+    xml = re.sub(
+        r'(<rss [^>]+)',
+        r'\1 xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"',
+        xml,
+        count=1
+    )
 
     with open(filename, "w", encoding="utf-8") as f:
         f.write(xml)
