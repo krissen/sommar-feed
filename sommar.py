@@ -81,6 +81,7 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     ITUNES_NS = "http://www.itunes.com/dtds/podcast-1.0.dtd"
     ATOM_NS = "http://www.w3.org/2005/Atom"
     CONTENT_NS = "http://purl.org/rss/1.0/modules/content/"
+    AUTHOR = "Sveriges Radio"
 
     fg = FeedGenerator()
     fg.title(FEED_TITLE)
@@ -93,10 +94,6 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     fg.generator('python-feedgen')
     fg.category(term="Society & Culture")
 
-    # (itunes:explicit kräver hack, vi gör det i efterbearbetningen)
-    # Samma för itunes:category och kanalbild
-
-    # Skapa lookup för bild per guid (länk)
     guid_to_image = {}
     for ep in episodes:
         fe = fg.add_entry()
@@ -115,58 +112,74 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
 
     rss_bytes = fg.rss_str(pretty=True)
 
-    # Registrera namespaces innan vi bygger vidare
+    # Registrera namespaces
     ET.register_namespace("content", CONTENT_NS)
     ET.register_namespace("itunes", ITUNES_NS)
     ET.register_namespace("atom", ATOM_NS)
+    # podcastindex namespace, valfritt
+    ET.register_namespace("podcast", "https://podcastindex.org/namespace/1.0")
 
     tree = ET.parse(BytesIO(rss_bytes))
     root = tree.getroot()
     channel = root.find("channel")
 
-    # 1. <atom:link rel="self" ...>
+    # Bestäm position för första <item>
+    first_item_pos = 0
+    for idx, child in enumerate(channel):
+        if child.tag == "item":
+            first_item_pos = idx
+            break
+    else:
+        first_item_pos = len(channel)
+
+    # För in alla nödvändiga channel-element FÖRE första <item>
+    insert_pos = first_item_pos
+
+    # <language> (om ej redan finns)
+    if channel.find("language") is None:
+        lang_el = ET.Element("language")
+        lang_el.text = "sv-SE"
+        channel.insert(insert_pos, lang_el)
+        insert_pos += 1
+
+    # <itunes:category>
+    itunes_cat = ET.Element("{%s}category" % ITUNES_NS, {"text": "Society & Culture"})
+    channel.insert(insert_pos, itunes_cat)
+    insert_pos += 1
+
+    # <itunes:author>
+    itunes_author = ET.Element("{%s}author" % ITUNES_NS)
+    itunes_author.text = AUTHOR
+    channel.insert(insert_pos, itunes_author)
+    insert_pos += 1
+
+    # <itunes:explicit>
+    itunes_exp = ET.Element("{%s}explicit" % ITUNES_NS)
+    itunes_exp.text = "no"
+    channel.insert(insert_pos, itunes_exp)
+    insert_pos += 1
+
+    # <itunes:image>
+    itunes_img = ET.Element("{%s}image" % ITUNES_NS, {"href": channel_image})
+    channel.insert(insert_pos, itunes_img)
+    insert_pos += 1
+
+    # <atom:link rel="self" ...>
     atom_link = ET.Element("{%s}link" % ATOM_NS, {
         "href": "https://yourserv.er/podcast.xml",
         "rel": "self",
         "type": "application/rss+xml"
     })
-    channel.insert(0, atom_link)
+    channel.insert(insert_pos, atom_link)
+    insert_pos += 1
 
-    # 2. <language> om den inte finns
-    if channel.find("language") is None:
-        language = ET.Element("language")
-        language.text = "sv-SE"
-        channel.insert(1, language)
-
-    # 3. <itunes:category>
-    ET.SubElement(
-        channel,
-        "{%s}category" % ITUNES_NS,
-        {"text": "Society & Culture"},
-    )
-
-    # 2. <author> och <itunes:author>
+    # <author> (vanlig)
     author = ET.Element("author")
-    author.text = "Sveriges Radio"
-    channel.insert(2, author)
+    author.text = AUTHOR
+    channel.insert(insert_pos, author)
+    insert_pos += 1
 
-    ET.SubElement(
-        channel,
-        "{%s}author" % ITUNES_NS
-    ).text = "Sveriges Radio"
-
-    # 4. <itunes:explicit>
-    ET.SubElement(
-        channel,
-        "{%s}explicit" % ITUNES_NS
-    ).text = "no"
-
-
-    # 5. <itunes:image> för kanal
-    itunes_image = ET.Element("{%s}image" % ITUNES_NS, {"href": channel_image})
-    channel.insert(len(channel.findall("./*")) - len(channel.findall("./item")), itunes_image)
-
-    # 6. <itunes:image> per avsnitt, kopplat via GUID/LINK
+    # <itunes:image> per avsnitt
     for item in channel.findall("item"):
         guid = item.find("guid")
         if guid is not None and guid.text in guid_to_image:
@@ -176,37 +189,37 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
                 {"href": guid_to_image[guid.text]},
             )
 
-    # 7. CDATA för <content:encoded>
+    # CDATA för <content:encoded>
     for encoded in root.findall(".//{%s}encoded" % CONTENT_NS):
         if encoded.text and not isinstance(encoded.text, ET.CDATA):
             encoded.text = ET.CDATA(encoded.text)
 
-    # Skriv ut till fil (kan ge onödiga ns-prefix)
+    # Skriv ut till fil (kan ge ns-prefix som fixas nedan)
     tree.write(filename, encoding="utf-8", xml_declaration=True, pretty_print=True)
 
-    # Sista fix: sanera namespace och snygga radbrytningar
+    # Sanera namespaces och radbrytning för itunes:image
     with open(filename, "r", encoding="utf-8") as f:
         xml = f.read()
     xml = re.sub(r'\s+xmlns:itunes="[^"]+"', '', xml)
     xml = re.sub(r'\s+ns\d+:itunes="[^"]+"', '', xml)
     xml = re.sub(r'\s+xmlns:ns\d+="[^"]+"', '', xml)
+    # podcastindex namespace (om du vill ha den)
     xml = re.sub(
         r'(<rss [^>]+)',
         r'\1 xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"',
         xml,
         count=1
     )
-        # 2. Lägg till podcast-namespace EN gång, direkt efter <rss ...>
     xml = re.sub(
         r'(<rss [^>]+)',
         r'\1 xmlns:podcast="https://podcastindex.org/namespace/1.0"',
         xml,
         count=1
     )
-
     xml = re.sub(r'(<pubDate>.+?</pubDate>)(<itunes:image)', r'\1\n      \2', xml)
     with open(filename, "w", encoding="utf-8") as f:
         f.write(xml)
+
     print(f"✅ RSS-flöde sparat som {filename}")
 
 if __name__ == "__main__":
