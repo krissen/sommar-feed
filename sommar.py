@@ -85,12 +85,22 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
 
     channel_image = fetch_program_image()
     fg.image(url=channel_image, title=FEED_TITLE, link=PROGRAM_URL)
+    fg.language('sv-SE')
+    fg.generator('python-feedgen')
+    
+    # Lägg till Apple-kategori ("Society & Culture" är ett vanligt val)
+    # Kan bytas mot det du tycker passar bättre!
+    fg.category(term="Society & Culture")
+    
+    # Lägg till explicit-flagga
+    fg.podcast.itunes_explicit('no') if hasattr(fg, 'podcast') else None
 
     for ep in episodes:
         fe = fg.add_entry()
         fe.title(ep["title"])
         fe.link(href=ep["link"])
         fe.pubDate(ep["date"])
+        fe.guid(ep["link"], permalink=True)  # Unik GUID, använd permalänk
         if ep["description"]:
             fe.description(ep["description"])
         if ep.get("audio"):
@@ -104,16 +114,44 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     # Registrera namespaces innan vi bygger vidare
     ET.register_namespace("content", "http://purl.org/rss/1.0/modules/content/")
     ET.register_namespace("itunes", ITUNES_NS)
+    ET.register_namespace("atom", "http://www.w3.org/2005/Atom")
 
     tree = ET.parse(BytesIO(rss_bytes))
     root = tree.getroot()
     channel = root.find("channel")
 
-    # Lägg till kanalbild som <itunes:image> (INNAN items)
+    # 1. Lägg till <atom:link rel="self" ...> i channel
+    atom_link = ET.Element("{http://www.w3.org/2005/Atom}link", {
+        "href": "https://yourserv.er/podcast.xml",
+        "rel": "self",
+        "type": "application/rss+xml"
+    })
+    channel.insert(0, atom_link)
+
+    # 2. Lägg till <language> i channel
+    if channel.find("language") is None:
+        language = ET.Element("language")
+        language.text = "sv-SE"
+        channel.insert(1, language)
+
+    # 3. Lägg till <itunes:category>
+    ET.SubElement(
+        channel,
+        "{http://www.itunes.com/dtds/podcast-1.0.dtd}category",
+        {"text": "Society & Culture"},
+    )
+
+    # 4. Lägg till <itunes:explicit>
+    ET.SubElement(
+        channel,
+        "{http://www.itunes.com/dtds/podcast-1.0.dtd}explicit"
+    ).text = "no"
+
+    # 5. Lägg till kanalbild som <itunes:image> (INNAN items)
     itunes_image = ET.Element("{%s}image" % ITUNES_NS, {"href": channel_image})
     channel.insert(len(channel.findall("./*")) - len(channel.findall("./item")), itunes_image)
 
-    # Lägg till per-avsnitt itunes:image
+    # 6. Lägg till per-avsnitt itunes:image
     for ep, item in zip(episodes, channel.findall("item")):
         if ep.get("image"):
             ET.SubElement(
@@ -122,7 +160,15 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
                 {"href": ep["image"]},
             )
 
-    # CDATA-wrap för content:encoded
+    # 7. Lägg till <guid> (om saknas) – redundans, men för säkerhets skull
+    for ep, item in zip(episodes, channel.findall("item")):
+        if item.find("guid") is None:
+            guid = ET.Element("guid")
+            guid.text = ep["link"]
+            guid.set("isPermaLink", "true")
+            item.insert(0, guid)
+
+    # 8. CDATA-wrap för content:encoded
     for encoded in root.findall(".//{http://purl.org/rss/1.0/modules/content/}encoded"):
         if encoded.text and not isinstance(encoded.text, ET.CDATA):
             encoded.text = ET.CDATA(encoded.text)
@@ -130,23 +176,19 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     # Skriv ut till fil (kan ge onödiga ns-prefix)
     tree.write(filename, encoding="utf-8", xml_declaration=True, pretty_print=True)
 
-    # Sista fix: sanera namespace (en gång, rätt och snyggt)
+    # Sista fix: sanera namespace och snygga radbrytningar
     with open(filename, "r", encoding="utf-8") as f:
         xml = f.read()
-    # Ta bort ALLA xmlns:itunes, ns0:itunes, xmlns:ns0 överallt:
     xml = re.sub(r'\s+xmlns:itunes="[^"]+"', '', xml)
     xml = re.sub(r'\s+ns\d+:itunes="[^"]+"', '', xml)
     xml = re.sub(r'\s+xmlns:ns\d+="[^"]+"', '', xml)
-    # Lägg TILL xmlns:itunes EN gång, direkt efter <rss ...>
     xml = re.sub(
         r'(<rss [^>]+)',
         r'\1 xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"',
         xml,
         count=1
     )
-    # Snygg radbrytning/indentering för <itunes:image> (i <item>)
     xml = re.sub(r'(<pubDate>.+?</pubDate>)(<itunes:image)', r'\1\n      \2', xml)
-
     with open(filename, "w", encoding="utf-8") as f:
         f.write(xml)
     print(f"✅ RSS-flöde sparat som {filename}")
