@@ -12,6 +12,7 @@ PROGRAM_URL = BASE_URL + "/avsnitt?programid=2071"
 FALLBACK_ICON = BASE_URL + "/static/img/sverigesradio-icon-192.png"
 FEED_TITLE = "Sommar & Vinter i P1 – inofficiellt RSS-flöde"
 OUTPUT_FILE = "podcast.xml"
+ITUNES_NS = "http://www.itunes.com/dtds/podcast-1.0.dtd"
 
 def fetch_program_image():
     """Hämta kanalbild från <link rel='image_src'>"""
@@ -102,25 +103,22 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
 
     # Registrera namespaces innan vi bygger vidare
     ET.register_namespace("content", "http://purl.org/rss/1.0/modules/content/")
-    ET.register_namespace("itunes", "http://www.itunes.com/dtds/podcast-1.0.dtd")
+    ET.register_namespace("itunes", ITUNES_NS)
 
     tree = ET.parse(BytesIO(rss_bytes))
     root = tree.getroot()
     channel = root.find("channel")
 
-    # Lägg till kanalbild manuellt (itunes:image)
-    ET.SubElement(
-        channel,
-        "{http://www.itunes.com/dtds/podcast-1.0.dtd}image",
-        {"href": channel_image},
-    )
+    # Lägg till kanalbild som <itunes:image> (INNAN items)
+    itunes_image = ET.Element("{%s}image" % ITUNES_NS, {"href": channel_image})
+    channel.insert(len(channel.findall("./*")) - len(channel.findall("./item")), itunes_image)
 
     # Lägg till per-avsnitt itunes:image
     for ep, item in zip(episodes, channel.findall("item")):
         if ep.get("image"):
             ET.SubElement(
                 item,
-                "{http://www.itunes.com/dtds/podcast-1.0.dtd}image",
+                "{%s}image" % ITUNES_NS,
                 {"href": ep["image"]},
             )
 
@@ -129,37 +127,25 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
         if encoded.text and not isinstance(encoded.text, ET.CDATA):
             encoded.text = ET.CDATA(encoded.text)
 
-    # Skriv ut till fil (tillfälligt, ev. fortfarande med ns0)
+    # Skriv ut till fil (kan ge onödiga ns-prefix)
     tree.write(filename, encoding="utf-8", xml_declaration=True, pretty_print=True)
 
-    # Sista fix: byt ns0:itunes till xmlns:itunes och ta bort xmlns:ns0 om den finns
+    # Sista fix: sanera namespace (en gång, rätt och snyggt)
     with open(filename, "r", encoding="utf-8") as f:
         xml = f.read()
-    xml = re.sub(r'ns\d+:itunes=', 'xmlns:itunes=', xml)
-    xml = re.sub(r'xmlns:ns\d+="http://www.w3.org/2000/xmlns/" ?', '', xml)
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write(xml)
-    # Sista fix
-    with open(filename, "r", encoding="utf-8") as f:
-        xml = f.read()
-    xml = re.sub(r'ns\d+:itunes=', 'xmlns:itunes=', xml)
-    xml = re.sub(r'xmlns:ns\d+="http://www.w3.org/2000/xmlns/" ?', '', xml)
-    xml = re.sub(r'(<itunes:image) xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"', r'\1', xml)
-
-    xml = re.sub(r'(</item>)', r'\1\n', xml)
-    xml = re.sub(r'    <itunes', '      <itunes', xml)
-    xml = re.sub(r'(\S)(</item>)', r'\1\n    \2', xml)
-    # 1. Ta bort ALLA xmlns:itunes (och ns0:itunes, och xmlns:ns0) överallt:
+    # Ta bort ALLA xmlns:itunes, ns0:itunes, xmlns:ns0 överallt:
     xml = re.sub(r'\s+xmlns:itunes="[^"]+"', '', xml)
     xml = re.sub(r'\s+ns\d+:itunes="[^"]+"', '', xml)
     xml = re.sub(r'\s+xmlns:ns\d+="[^"]+"', '', xml)
-    # 2. Lägg TILL xmlns:itunes EN gång, direkt efter <rss ...>
+    # Lägg TILL xmlns:itunes EN gång, direkt efter <rss ...>
     xml = re.sub(
         r'(<rss [^>]+)',
         r'\1 xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"',
         xml,
         count=1
     )
+    # Snygg radbrytning/indentering för <itunes:image> (i <item>)
+    xml = re.sub(r'(<pubDate>.+?</pubDate>)(<itunes:image)', r'\1\n      \2', xml)
 
     with open(filename, "w", encoding="utf-8") as f:
         f.write(xml)
