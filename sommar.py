@@ -95,6 +95,7 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     fg.category(term="Society & Culture")
 
     guid_to_image = {}
+    guid_to_desc = {}
     for ep in episodes:
         fe = fg.add_entry()
         fe.title(ep["title"])
@@ -103,6 +104,7 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
         fe.guid(ep["link"], permalink=True)
         if ep["description"]:
             fe.description(ep["description"])
+            guid_to_desc[ep["link"]] = ep["description"]
         if ep.get("audio"):
             fe.enclosure(ep["audio"], 0, "audio/mpeg")
         if ep.get("image"):
@@ -116,7 +118,6 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     ET.register_namespace("content", CONTENT_NS)
     ET.register_namespace("itunes", ITUNES_NS)
     ET.register_namespace("atom", ATOM_NS)
-    # podcastindex namespace, valfritt
     ET.register_namespace("podcast", "https://podcastindex.org/namespace/1.0")
 
     tree = ET.parse(BytesIO(rss_bytes))
@@ -155,7 +156,7 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
 
     # <itunes:explicit>
     itunes_exp = ET.Element("{%s}explicit" % ITUNES_NS)
-    itunes_exp.text = "no"
+    itunes_exp.text = "false"
     channel.insert(insert_pos, itunes_exp)
     insert_pos += 1
 
@@ -179,15 +180,41 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     channel.insert(insert_pos, author)
     insert_pos += 1
 
-    # <itunes:image> per avsnitt
+    # <itunes:image>, <itunes:summary>, <itunes:subtitle> per avsnitt direkt efter guid (eller description)
     for item in channel.findall("item"):
+        # Hämta referenser till befintliga element
+        el_list = list(item)
+        tags = {el.tag: el for el in el_list}
+
+        # Spara befintliga värden
         guid = item.find("guid")
-        if guid is not None and guid.text in guid_to_image:
-            ET.SubElement(
-                item,
-                "{%s}image" % ITUNES_NS,
-                {"href": guid_to_image[guid.text]},
-            )
+        desc = item.find("description")
+        image_url = None
+        this_guid = guid.text if guid is not None else None
+        if this_guid and this_guid in guid_to_image:
+            image_url = guid_to_image[this_guid]
+        summary_text = guid_to_desc.get(this_guid) or (desc.text if desc is not None else "")
+
+        # Skapa nya iTunes-element
+        it_img = ET.Element("{%s}image" % ITUNES_NS, {"href": image_url}) if image_url else None
+        it_sum = ET.Element("{%s}summary" % ITUNES_NS)
+        it_sum.text = summary_text
+        it_sub = ET.Element("{%s}subtitle" % ITUNES_NS)
+        it_sub.text = summary_text
+
+        # Skapa ny ordnad lista över element
+        new_children = []
+        for el in el_list:
+            new_children.append(el)
+            # Efter <guid> eller <description>, stoppa in iTunes-elementen
+            if el.tag == "guid" or (el.tag == "description" and "guid" not in tags):
+                if it_img is not None:
+                    new_children.append(it_img)
+                new_children.append(it_sum)
+                new_children.append(it_sub)
+        # Ersätt alla barn till <item>
+        item[:] = new_children
+
 
     # CDATA för <content:encoded>
     for encoded in root.findall(".//{%s}encoded" % CONTENT_NS):
@@ -203,7 +230,6 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     xml = re.sub(r'\s+xmlns:itunes="[^"]+"', '', xml)
     xml = re.sub(r'\s+ns\d+:itunes="[^"]+"', '', xml)
     xml = re.sub(r'\s+xmlns:ns\d+="[^"]+"', '', xml)
-    # podcastindex namespace (om du vill ha den)
     xml = re.sub(
         r'(<rss [^>]+)',
         r'\1 xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"',
@@ -217,6 +243,20 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
         count=1
     )
     xml = re.sub(r'(<pubDate>.+?</pubDate>)(<itunes:image)', r'\1\n      \2', xml)
+# Flytta itunes:image, itunes:summary, itunes:subtitle före content:encoded i varje item
+    for item in channel.findall("item"):
+        children = list(item)
+        itunes_elements = [c for c in children if c.tag.startswith("{%s}" % ITUNES_NS)]
+        content_idx = next((i for i, c in enumerate(children) if c.tag == "{http://purl.org/rss/1.0/modules/content/}encoded"), None)
+        new_children = []
+        for i, c in enumerate(children):
+            if i == content_idx:
+                new_children.extend(itunes_elements)
+            if c not in itunes_elements:
+                new_children.append(c)
+        item[:] = new_children
+
+
     with open(filename, "w", encoding="utf-8") as f:
         f.write(xml)
 
