@@ -145,11 +145,22 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
         {"text": "Society & Culture"},
     )
 
+    # 2. <author> och <itunes:author>
+    author = ET.Element("author")
+    author.text = "Sveriges Radio"
+    channel.insert(2, author)
+
+    ET.SubElement(
+        channel,
+        "{%s}author" % ITUNES_NS
+    ).text = "Sveriges Radio"
+
     # 4. <itunes:explicit>
     ET.SubElement(
         channel,
         "{%s}explicit" % ITUNES_NS
     ).text = "no"
+
 
     # 5. <itunes:image> för kanal
     itunes_image = ET.Element("{%s}image" % ITUNES_NS, {"href": channel_image})
@@ -185,6 +196,14 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
         xml,
         count=1
     )
+        # 2. Lägg till podcast-namespace EN gång, direkt efter <rss ...>
+    xml = re.sub(
+        r'(<rss [^>]+)',
+        r'\1 xmlns:podcast="https://podcastindex.org/namespace/1.0"',
+        xml,
+        count=1
+    )
+
     xml = re.sub(r'(<pubDate>.+?</pubDate>)(<itunes:image)', r'\1\n      \2', xml)
     with open(filename, "w", encoding="utf-8") as f:
         f.write(xml)
