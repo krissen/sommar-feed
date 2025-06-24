@@ -77,6 +77,10 @@ class SimpleXMLHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"Invalid path.")
 
+    def log_message(self, format, *args):
+        # Skriv till din egen log istället för stderr
+        log(f"{self.client_address[0]} - {format % args}")
+
 
 if __name__ == "__main__":
     # Starta bakgrundstråd för schemaläggning
