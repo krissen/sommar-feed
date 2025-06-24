@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-import requests
 import re
+
+import requests
 from bs4 import BeautifulSoup
 from feedgen.feed import FeedGenerator
 
@@ -106,7 +107,7 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
         fe.enclosure(ep["audio"], 0, "audio/mpeg")
         fe.podcast.itunes_subtitle(ep["description"])
         fe.podcast.itunes_explicit("no")
-        html = f'<img src="{ep["image"]}" alt="{ep["title"]}"/><p>{ep["description"]}</p>'
+        html = f'<p>{ep["description"]}</p><img src="{ep["image"]}" alt="{ep["title"]}"/>'
         fe.content(content=html, type="CDATA")
 
     fg.rss_file(filename, pretty=True)
