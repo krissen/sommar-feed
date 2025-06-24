@@ -1,6 +1,7 @@
 import ssl
-import threading
 import subprocess
+import sys
+import threading
 import time
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -10,32 +11,54 @@ PORT = 443
 FILE = Path("podcast.xml")
 CERT_FILE = Path("ssl/fullchain.pem")
 KEY_FILE = Path("ssl/privkey.pem")
+LOG_FILE = Path("server.log")
+
+
+def log(msg):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    full_msg = f"[{timestamp}] {msg}"
+    print(full_msg, flush=True)
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(full_msg + "\n")
+    except Exception:
+        pass
+
 
 def run_sommar_script():
-    print("Kör sommar.py för att generera podcast.xml …")
-    # Kör i samma mapp och fånga eventuella felutskrifter
+    log("Kör sommar.py för att generera podcast.xml …")
     try:
-        subprocess.run(["python3", "sommar.py"], check=True)
+        res = subprocess.run(
+            ["python3", "sommar.py"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        if res.stdout:
+            log(res.stdout)
+        if res.stderr:
+            log("STDERR: " + res.stderr)
     except Exception as e:
-        print(f"Fel vid körning av sommar.py: {e}")
+        log(f"Fel vid körning av sommar.py: {e}")
+
 
 def scheduler():
-    """Schemalägg körning 07:15 och 19:15 varje dag."""
+    """Schemalägg körning."""
     while True:
         now = datetime.now()
-        # Nästa tidpunkt (07:15 eller 19:15)
         next_times = [
-            now.replace(hour=7, minute=15, second=0, microsecond=0),
-            now.replace(hour=13, minute=00, second=0, microsecond=0),
-            now.replace(hour=19, minute=00, second=0, microsecond=0)
+            now.replace(hour=7, minute=5, second=0, microsecond=0),
+            now.replace(hour=13, minute=0, second=0, microsecond=0),
+            now.replace(hour=19, minute=0, second=0, microsecond=0),
         ]
         # Om redan passerat, addera en dag
         next_times = [t if t > now else t + timedelta(days=1) for t in next_times]
         next_run = min(next_times)
         wait_seconds = (next_run - now).total_seconds()
-        print(f"Nästa körning: {next_run} ({wait_seconds/3600:.2f} timmar kvar)")
+        log(f"Nästa körning: {next_run} ({wait_seconds/3600:.2f} timmar kvar)")
         time.sleep(wait_seconds)
         run_sommar_script()
+
 
 class SimpleXMLHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -54,6 +77,7 @@ class SimpleXMLHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"Invalid path.")
 
+
 if __name__ == "__main__":
     # Starta bakgrundstråd för schemaläggning
     t = threading.Thread(target=scheduler, daemon=True)
@@ -66,6 +90,5 @@ if __name__ == "__main__":
     httpd = HTTPServer(("0.0.0.0", PORT), SimpleXMLHandler)
     httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
 
-    print(f"Serving https://0.0.0.0:{PORT}/podcast.xml with SSL")
+    log(f"Serving https://0.0.0.0:{PORT}/podcast.xml with SSL")
     httpd.serve_forever()
-
