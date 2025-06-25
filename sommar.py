@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
+import datetime
 import json
 import os
 import random
 import re
 import time
 import uuid
+from email.utils import format_datetime
 
 import requests
 from bs4 import BeautifulSoup
@@ -204,7 +206,11 @@ def fetch_episodes():
 
             title = title_el.text.strip()
             page_link = BASE_URL + title_el["href"]
-            pub_date = date_el["datetime"]
+            pub_date_raw = date_el["datetime"]
+            pub_date_dt = datetime.datetime.strptime(pub_date_raw, "%Y-%m-%d %H:%M:%SZ")
+            pub_date_rfc = format_datetime(pub_date_dt)
+            pub_date = pub_date_rfc
+
             description = desc_el.text.strip() if desc_el else ""
 
             audio_url = mp3_el["href"]
@@ -278,6 +284,7 @@ def fix_channel_link(xml_path, program_url=PROGRAM_URL):
     with open(xml_path, "w", encoding="utf-8") as f:
         f.write(xml)
 
+
 def fix_image_link(xml_path, program_url=PROGRAM_URL):
     with open(xml_path, "r", encoding="utf-8") as f:
         xml = f.read()
@@ -290,6 +297,7 @@ def fix_image_link(xml_path, program_url=PROGRAM_URL):
     )
     with open(xml_path, "w", encoding="utf-8") as f:
         f.write(xml)
+
 
 def fix_itunes_explicit(xml_path):
     with open(xml_path, "r", encoding="utf-8") as f:
