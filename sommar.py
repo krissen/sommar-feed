@@ -15,13 +15,14 @@ from lxml import etree
 
 BASE_URL = "https://www.sverigesradio.se"
 PROGRAM_URL = BASE_URL + "/avsnitt?programid=2071"
+CHANNEL_URL = "https://www.sverigesradio.se/sommar-i-p1"
+API_IMAGE_URL = "https://static-cdn.sr.se/images/2071/138fda3c-4e35-48e0-8fdb-e2ea8ef44758.jpg?preset=api-itunes-presentation-image"
 FEED_TITLE = "Sommar & Vinter i P1 – inofficiellt RSS-flöde"
 FEED_URL = "https://yourserv.er/podcast.xml"
 FALLBACK_ICON = (
     "https://static-cdn.sr.se/images/2071/138fda3c-4e35-48e0-8fdb-e2ea8ef44758.jpg"
 )
 OUTPUT_FILE = "podcast.xml"
-IMAGE_SIZE = 2048
 CACHE_FILE = "cache.json"
 DEBUG = False
 
@@ -46,18 +47,10 @@ def fetch_program_image():
         img_el = soup.select_one(".program-menu__image-wrapper .image--square img")
         if img_el and img_el.get("src"):
             base_img = clean_image_url(img_el["src"])
-            # return get_image_preset(base_img)
             return base_img
     except Exception as e:
         print(f"⚠️ Kunde inte hämta kanalbild: {e}")
     return FALLBACK_ICON
-
-
-def tidy_xml(xml_path):
-    parser = etree.XMLParser(remove_blank_text=True)
-    with open(xml_path, "rb") as f:
-        tree = etree.parse(f, parser)
-    tree.write(xml_path, pretty_print=True, xml_declaration=True, encoding="utf-8")
 
 
 def get_mp3_size(url):
@@ -67,7 +60,7 @@ def get_mp3_size(url):
             length = int(r.headers.get("Content-Length", 0))
             if length > 0:
                 break
-            pause = random.uniform(0.25, 1.5)
+            pause = random.uniform(0.75, 2.5)
             time.sleep(pause)
         return length
     except Exception as e:
@@ -93,29 +86,6 @@ def generate_podcast_guid(feed_url):
     return str(uuid.uuid5(namespace, url))
 
 
-def postprocess_images(xml_path, preset="2048x2048"):
-    with open(xml_path, "r", encoding="utf-8") as f:
-        xml = f.read()
-
-    # Byt ut alla ...jpg eller ...png (utan ? och med valfria querys) mot ...jpg?preset=2048x2048
-    # men undvik att lägga till preset två gånger
-    def add_preset(m):
-        url = m.group(1)
-        if "preset=" not in url:
-            return f'{url}?preset={preset}"'
-        else:
-            return m.group(0)
-
-    # itunes:image
-    xml = re.sub(
-        r'(https://static-cdn\.sr\.se/images/[0-9]+/[a-f0-9\-]+\.(?:jpg|png))"',
-        add_preset,
-        xml,
-    )
-    with open(xml_path, "w", encoding="utf-8") as f:
-        f.write(xml)
-
-
 def ensure_podcast_namespace(xml_path):
     with open(xml_path, "r", encoding="utf-8") as f:
         xml = f.read()
@@ -136,18 +106,18 @@ def ensure_podcast_namespace(xml_path):
 def add_podcast_guid_to_rss(xml_path, guid):
     with open(xml_path, "r", encoding="utf-8") as f:
         xml = f.read()
-    soup = BeautifulSoup(xml, "xml")
-
-    channel = soup.find("channel")
-    if channel:
-        # Kontrollera om redan finns
-        if not channel.find("podcast:guid"):
-            tag = soup.new_tag("podcast:guid")
-            tag.string = guid
-            channel.insert(1, tag)  # Efter <title>
-    # Spara tillbaka
+    # Kontrollera om redan finns
+    if "<podcast:guid>" in xml:
+        return  # Redan inlagd
+    # Lägg in efter <channel> eller direkt efter <title>
+    xml = re.sub(
+        r"(<channel>\s*)",
+        r"\1<podcast:guid>{}</podcast:guid>\n".format(guid),
+        xml,
+        count=1,
+    )
     with open(xml_path, "w", encoding="utf-8") as f:
-        f.write(str(soup))
+        f.write(xml)
 
 
 def clean_image_url(url):
@@ -158,16 +128,6 @@ def clean_image_url(url):
     if match:
         return match.group(1)
     return url  # fallback: returnera som den är
-
-
-def get_image_preset(img_base_url):
-    size = IMAGE_SIZE
-    url = f"{img_base_url}?preset={size}x{size}"
-    r = requests.head(url)
-    if r.status_code == 200:
-        return url
-    # fallback: använd orginal url utan preset
-    return img_base_url
 
 
 def parse_duration(abbr_text):
@@ -190,7 +150,6 @@ def fetch_episodes():
     resp = requests.get(PROGRAM_URL)
     soup = BeautifulSoup(resp.content, "html.parser")
     episodes = []
-
     current_audio_urls = set()
     for item in soup.select("div.episode-list-item"):
         try:
@@ -221,7 +180,6 @@ def fetch_episodes():
 
             current_audio_urls.add(audio_url)
 
-            # Bygg alltid en "episode" och lägg in EN gång
             if audio_url in cache:
                 if DEBUG:
                     print(f"[CACHE] {title} ({audio_url})")
@@ -229,6 +187,7 @@ def fetch_episodes():
             else:
                 if DEBUG:
                     print(f"[FETCH] {title} ({audio_url})")
+                # Bild-url
                 image_url = None
                 if img_el:
                     image_url = img_el.get("data-src") or img_el.get("src")
@@ -238,10 +197,22 @@ def fetch_episodes():
                         elif image_url.startswith("/"):
                             image_url = BASE_URL + image_url
                     image_url = clean_image_url(image_url)
+
+                # Duration
                 duration = None
                 if abbr_el:
                     duration = parse_duration(abbr_el.text.strip())
+
+                # Size
                 size = get_mp3_size(audio_url)
+
+                # Itunes subtitle och summary: samma som description, eller om du vill generera bättre (t.ex. extrahera första meningen)
+                itunes_subtitle = description
+                itunes_summary = description
+
+                # Itunes author
+                itunes_author = "Sveriges Radio"  # statiskt, kan ibland vara annorlunda i originalet
+
                 episode = {
                     "title": title,
                     "link": page_link,
@@ -251,14 +222,16 @@ def fetch_episodes():
                     "image": image_url,
                     "duration": duration,
                     "size": size,
+                    "itunes_author": itunes_author,
+                    "itunes_summary": itunes_summary,
+                    "itunes_subtitle": itunes_subtitle,
+                    # "guid": ...  # Om du vill särskilja från länk
                 }
                 cache[audio_url] = episode
-            episodes.append(episode)  # <-- ENDAST EN gång!
-
+            episodes.append(episode)
         except Exception as e:
             print(f"⚠️ Fel vid parsning: {e}")
 
-    # Rensa cache från avsnitt som inte längre finns på hosten
     for cached_url in list(cache):
         if cached_url not in current_audio_urls:
             if DEBUG:
@@ -269,7 +242,7 @@ def fetch_episodes():
     return episodes
 
 
-def fix_channel_link(xml_path, program_url=PROGRAM_URL):
+def fix_channel_link(xml_path, program_url=CHANNEL_URL):
     with open(xml_path, "r", encoding="utf-8") as f:
         xml = f.read()
     xml = re.sub(
@@ -285,16 +258,50 @@ def fix_channel_link(xml_path, program_url=PROGRAM_URL):
         f.write(xml)
 
 
-def fix_image_link(xml_path, program_url=PROGRAM_URL):
+def fix_channel_images(
+    xml_path, channel_url, image_url, preset="api-itunes-presentation-image"
+):
     with open(xml_path, "r", encoding="utf-8") as f:
         xml = f.read()
-    # Ersätt <image><link>...</link> med <image><link>{program_url}</link>
+
+    # 1. Ersätt <image><link>...</link> med <image><link>{channel_url}</link>
     xml = re.sub(
         r"(<image>.*?<title>.*?</title>\s*<link>)(.*?)(</link>)",
-        r"\1" + program_url + r"\3",
+        r"\1" + channel_url + r"\3",
         xml,
         flags=re.DOTALL,
     )
+    # 2. Ersätt <image><url>...</url> med exakt image_url (med preset)
+    xml = re.sub(
+        r"(<image>\s*<url>)(.*?)(</url>)",
+        r"\1" + image_url + r"\3",
+        xml,
+        flags=re.DOTALL,
+    )
+
+    # 3. Sätt preset på alla https://static-cdn.sr.se/images/...jpg eller png i itunes:image etc (om ej redan preset)
+    def add_preset(m):
+        url = m.group(1)
+        if "preset=" not in url:
+            return f'{url}?preset={preset}"'
+        else:
+            return m.group(0)
+
+    xml = re.sub(
+        r'(https://static-cdn\.sr\.se/images/[0-9]+/[a-f0-9\-]+\.(?:jpg|png))"',
+        add_preset,
+        xml,
+    )
+
+    # TA BORT preset för bilder i <content:encoded>
+    # Ersätt t.ex. src="...jpg?pres...ion-image" med src="...jpg"
+    xml = re.sub(
+        r'(<content:encoded>.*?src="https://static-cdn\.sr\.se/images/[0-9]+/[a-f0-9\-]+\.jpg)\?preset=[^"]*(".*?</content:encoded>)',
+        r"\1\2",
+        xml,
+        flags=re.DOTALL,
+    )
+
     with open(xml_path, "w", encoding="utf-8") as f:
         f.write(xml)
 
@@ -325,12 +332,16 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     fg.load_extension("podcast")
 
     fg.title(FEED_TITLE)
-    fg.link(href=PROGRAM_URL, rel="alternate")
+    fg.link(href=CHANNEL_URL, rel="alternate")
     fg.link(href=FEED_URL, rel="self", type="application/rss+xml")
     fg.language("sv")
     fg.logo(fetch_program_image())
     fg.generator("python-feedgen")
-    fg.description("Automatiskt RSS-flöde genererat från Sveriges Radios webbsida.")
+    desc_plain = "Inofficiellt RSS-flöde automatiskt genererat från Sveriges Radio. Alla Sommarprat finns att lyssna på i Sveriges Radio Play. Inofficiell feed som hämtar avsnitt från Sveriges Radios webbsida."
+    fg.podcast.itunes_summary(desc_plain)
+    fg.description(desc_plain)
+    fg.copyright("Copyright Sveriges Radio 2025. All rights reserved.")
+
     fg.id(FEED_URL)
     fg.podcast.itunes_author("Sveriges Radio")
     fg.podcast.itunes_category("Society & Culture")
@@ -343,12 +354,13 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
         fe.link(href=ep["link"])
         fe.podcast.itunes_duration(ep.get("duration", "00:00:00"))
         fe.podcast.itunes_image(ep["image"])
-        fe.podcast.itunes_summary(ep["description"])
+        fe.podcast.itunes_summary(ep.get("itunes_summary", ep["description"]))
+        fe.podcast.itunes_author(ep.get("itunes_author", "Sveriges Radio"))
+        fe.podcast.itunes_subtitle(ep.get("itunes_subtitle", ep["description"]))
         fe.pubDate(ep["date"])
         fe.guid(ep["link"], permalink=True)
         fe.description(ep["description"])
         fe.enclosure(ep["audio"], ep["size"], "audio/mpeg")
-        fe.podcast.itunes_subtitle(ep["description"])
         fe.podcast.itunes_explicit("no")
         html = (
             f'<p>{ep["description"]}</p><img src="{ep["image"]}" alt="{ep["title"]}"/>'
@@ -363,19 +375,15 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     if DEBUG:
         print(f"[GUID] Genererad podcast GUID: {guid}")
     add_podcast_guid_to_rss(filename, guid)
-    postprocess_images(filename)
-    if DEBUG:
-        print(f"[IMAGES] Postprocessade bilder i {filename}")
     fix_itunes_explicit(filename)
     if DEBUG:
         print(f"[ITUNES] Fixade explicit tag i {filename}")
-    fix_channel_link(filename, PROGRAM_URL)
+    fix_channel_link(filename, CHANNEL_URL)
     if DEBUG:
         print(f"[ITUNES] Fixade channel link i {filename}")
-    fix_image_link(filename, PROGRAM_URL)
+    fix_channel_images(OUTPUT_FILE, CHANNEL_URL, API_IMAGE_URL)
     if DEBUG:
         print(f"[ITUNES] Fixade image link i {filename}")
-    tidy_xml(filename)
     if DEBUG:
         print(f"[XML] XML-tidy utförd på {filename}")
     fix_xml_declaration(filename)
