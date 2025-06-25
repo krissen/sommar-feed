@@ -6,13 +6,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-required = ["USER", "HOME", "ENV", "PYTHON", "WORKDIR"]
+required = ["HOME", "ENV", "PYTHON", "WORKDIR"]
 missing = [v for v in required if v not in os.environ]
 if missing:
     print(f"❌ Saknar miljövariabler: {', '.join(missing)}")
     sys.exit(1)
 
-user = os.environ["USER"]
 env = os.environ["ENV"]
 py = os.environ["PYTHON"]
 workdir = os.environ["WORKDIR"]
