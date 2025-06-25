@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import json
+import os
 import random
 import re
 import time
@@ -18,6 +20,20 @@ FEED_TITLE = "Sommar & Vinter i P1 – inofficiellt RSS-flöde"
 FEED_URL = "https://yourserv.er/podcast.xml"
 OUTPUT_FILE = "podcast.xml"
 IMAGE_SIZE = 2048
+CACHE_FILE = "cache.json"
+DEBUG = False
+
+
+def load_cache():
+    if os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def save_cache(cache):
+    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(cache, f, ensure_ascii=False, indent=2)
 
 
 def fetch_program_image():
@@ -157,9 +173,12 @@ def parse_duration(abbr_text):
 
 
 def fetch_episodes():
+    cache = load_cache()
     resp = requests.get(PROGRAM_URL)
     soup = BeautifulSoup(resp.content, "html.parser")
     episodes = []
+
+    current_audio_urls = set()
     for item in soup.select("div.episode-list-item"):
         try:
             title_el = item.select_one(".audio-heading__title a")
@@ -183,24 +202,30 @@ def fetch_episodes():
             elif audio_url.startswith("/"):
                 audio_url = BASE_URL + audio_url
 
-            image_url = None
-            if img_el:
-                image_url = img_el.get("data-src") or img_el.get("src")
-                if image_url:
-                    if image_url.startswith("//"):
-                        image_url = "https:" + image_url
-                    elif image_url.startswith("/"):
-                        image_url = BASE_URL + image_url
-                # Rensa preset eller andra querystrings
-                image_url = clean_image_url(image_url)
-                # image_url = get_image_preset(image_url_clean)
+            current_audio_urls.add(audio_url)
 
-            duration = None
-            if abbr_el:
-                duration = parse_duration(abbr_el.text.strip())
-
-            episodes.append(
-                {
+            # Bygg alltid en "episode" och lägg in EN gång
+            if audio_url in cache:
+                if DEBUG:
+                    print(f"[CACHE] {title} ({audio_url})")
+                episode = cache[audio_url]
+            else:
+                if DEBUG:
+                    print(f"[FETCH] {title} ({audio_url})")
+                image_url = None
+                if img_el:
+                    image_url = img_el.get("data-src") or img_el.get("src")
+                    if image_url:
+                        if image_url.startswith("//"):
+                            image_url = "https:" + image_url
+                        elif image_url.startswith("/"):
+                            image_url = BASE_URL + image_url
+                    image_url = clean_image_url(image_url)
+                duration = None
+                if abbr_el:
+                    duration = parse_duration(abbr_el.text.strip())
+                size = get_mp3_size(audio_url)
+                episode = {
                     "title": title,
                     "link": page_link,
                     "audio": audio_url,
@@ -208,10 +233,22 @@ def fetch_episodes():
                     "description": description,
                     "image": image_url,
                     "duration": duration,
+                    "size": size,
                 }
-            )
+                cache[audio_url] = episode
+            episodes.append(episode)  # <-- ENDAST EN gång!
+
         except Exception as e:
             print(f"⚠️ Fel vid parsning: {e}")
+
+    # Rensa cache från avsnitt som inte längre finns på hosten
+    for cached_url in list(cache):
+        if cached_url not in current_audio_urls:
+            if DEBUG:
+                print(f"[REMOVE] Tar bort cache för {cached_url}")
+            del cache[cached_url]
+
+    save_cache(cache)
     return episodes
 
 
@@ -254,7 +291,6 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     fg.podcast.itunes_image(fetch_program_image())
 
     for ep in episodes:
-        size = get_mp3_size(ep["audio"])
         fe = fg.add_entry()
         fe.title(ep["title"])
         fe.link(href=ep["link"])
@@ -264,7 +300,7 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
         fe.pubDate(ep["date"])
         fe.guid(ep["link"], permalink=True)
         fe.description(ep["description"])
-        fe.enclosure(ep["audio"], size, "audio/mpeg")
+        fe.enclosure(ep["audio"], ep["size"], "audio/mpeg")
         fe.podcast.itunes_subtitle(ep["description"])
         fe.podcast.itunes_explicit("no")
         html = (
@@ -273,12 +309,22 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
         fe.content(content=html, type="CDATA")
 
     fg.rss_file(filename, pretty=True)
+    if DEBUG:
+        print(f"[FEEDGEN] RSS-flöde genererat med {len(episodes)} avsnitt.")
     guid = generate_podcast_guid(FEED_URL)
     ensure_podcast_namespace(filename)
+    if DEBUG:
+        print(f"[GUID] Genererad podcast GUID: {guid}")
     add_podcast_guid_to_rss(filename, guid)
     postprocess_images(filename)
+    if DEBUG:
+        print(f"[IMAGES] Postprocessade bilder i {filename}")
     fix_itunes_explicit(filename)
+    if DEBUG:
+        print(f"[ITUNES] Fixade explicit tag i {filename}")
     tidy_xml(filename)
+    if DEBUG:
+        print(f"[XML] XML-tidy utförd på {filename}")
     print(f"✅ RSS-flöde sparat som {filename}")
 
 
