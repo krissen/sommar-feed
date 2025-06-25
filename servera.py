@@ -1,3 +1,4 @@
+import os
 import ssl
 import subprocess
 import sys
@@ -17,7 +18,7 @@ LOG_FILE = Path("server.log")
 load_dotenv()
 if "PORT" not in os.environ:
     raise RuntimeError("PORT saknas! Skapa .env eller exportera variabeln.")
-PORT = os.environ["PORT"]
+PORT = int(os.environ["PORT"])
 
 
 def log(msg):
