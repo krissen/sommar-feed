@@ -13,11 +13,11 @@ from lxml import etree
 
 BASE_URL = "https://www.sverigesradio.se"
 PROGRAM_URL = BASE_URL + "/avsnitt?programid=2071"
+FEED_TITLE = "Sommar & Vinter i P1 – inofficiellt RSS-flöde"
+FEED_URL = "https://yourserv.er/podcast.xml"
 FALLBACK_ICON = (
     "https://static-cdn.sr.se/images/2071/138fda3c-4e35-48e0-8fdb-e2ea8ef44758.jpg"
 )
-FEED_TITLE = "Sommar & Vinter i P1 – inofficiellt RSS-flöde"
-FEED_URL = "https://yourserv.er/podcast.xml"
 OUTPUT_FILE = "podcast.xml"
 IMAGE_SIZE = 2048
 CACHE_FILE = "cache.json"
@@ -71,6 +71,17 @@ def get_mp3_size(url):
     except Exception as e:
         print(f"⚠️ Fel vid hämtning av filstorlek: {e}")
         return 0
+
+
+def fix_xml_declaration(xml_path):
+    with open(xml_path, "r", encoding="utf-8") as f:
+        xml = f.read()
+    # Ta bort ev. gammal declaration
+    xml = re.sub(r"^<\?xml.*?\?>\s*", "", xml)
+    # Lägg in korrekt rad
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml
+    with open(xml_path, "w", encoding="utf-8") as f:
+        f.write(xml)
 
 
 def generate_podcast_guid(feed_url):
@@ -252,6 +263,34 @@ def fetch_episodes():
     return episodes
 
 
+def fix_channel_link(xml_path, program_url=PROGRAM_URL):
+    with open(xml_path, "r", encoding="utf-8") as f:
+        xml = f.read()
+    xml = re.sub(
+        r"<channel>\s*(<podcast:guid>.*?</podcast:guid>\s*)?<title>.*?</title>\s*<link>.*?</link>",
+        lambda m: m.group(0).replace(
+            re.search(r"<link>.*?</link>", m.group(0)).group(0),
+            f"<link>{program_url}</link>",
+        ),
+        xml,
+        flags=re.DOTALL,
+    )
+    with open(xml_path, "w", encoding="utf-8") as f:
+        f.write(xml)
+
+def fix_image_link(xml_path, program_url=PROGRAM_URL):
+    with open(xml_path, "r", encoding="utf-8") as f:
+        xml = f.read()
+    # Ersätt <image><link>...</link> med <image><link>{program_url}</link>
+    xml = re.sub(
+        r"(<image>.*?<title>.*?</title>\s*<link>)(.*?)(</link>)",
+        r"\1" + program_url + r"\3",
+        xml,
+        flags=re.DOTALL,
+    )
+    with open(xml_path, "w", encoding="utf-8") as f:
+        f.write(xml)
+
 def fix_itunes_explicit(xml_path):
     with open(xml_path, "r", encoding="utf-8") as f:
         xml = f.read()
@@ -280,7 +319,7 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     fg.title(FEED_TITLE)
     fg.link(href=PROGRAM_URL, rel="alternate")
     fg.link(href=FEED_URL, rel="self", type="application/rss+xml")
-    fg.language("sv-SE")
+    fg.language("sv")
     fg.logo(fetch_program_image())
     fg.generator("python-feedgen")
     fg.description("Automatiskt RSS-flöde genererat från Sveriges Radios webbsida.")
@@ -322,9 +361,18 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     fix_itunes_explicit(filename)
     if DEBUG:
         print(f"[ITUNES] Fixade explicit tag i {filename}")
+    fix_channel_link(filename, PROGRAM_URL)
+    if DEBUG:
+        print(f"[ITUNES] Fixade channel link i {filename}")
+    fix_image_link(filename, PROGRAM_URL)
+    if DEBUG:
+        print(f"[ITUNES] Fixade image link i {filename}")
     tidy_xml(filename)
     if DEBUG:
         print(f"[XML] XML-tidy utförd på {filename}")
+    fix_xml_declaration(filename)
+    if DEBUG:
+        print(f"[XML] Fixade XML-deklaration i {filename}")
     print(f"✅ RSS-flöde sparat som {filename}")
 
 
