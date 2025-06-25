@@ -39,6 +39,23 @@ def generate_podcast_guid(feed_url):
     return str(uuid.uuid5(namespace, url))
 
 
+def ensure_podcast_namespace(xml_path):
+    with open(xml_path, "r", encoding="utf-8") as f:
+        xml = f.read()
+
+    if "xmlns:podcast=" not in xml:
+        # Sätt in namespace-attributet i <rss ...>
+        xml = re.sub(
+            r"(<rss\b[^>]*?)>",
+            r'\1 xmlns:podcast="https://podcastindex.org/namespace/1.0">',
+            xml,
+            count=1,
+        )
+
+    with open(xml_path, "w", encoding="utf-8") as f:
+        f.write(xml)
+
+
 def add_podcast_guid_to_rss(xml_path, guid):
     with open(xml_path, "r", encoding="utf-8") as f:
         xml = f.read()
@@ -164,6 +181,7 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
 
     fg.rss_file(filename, pretty=True)
     guid = generate_podcast_guid(FEED_URL)
+    ensure_podcast_namespace(filename)
     add_podcast_guid_to_rss(filename, guid)
     print(f"✅ RSS-flöde sparat som {filename}")
 
