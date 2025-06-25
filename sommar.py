@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import re
+import uuid
 
 import requests
 from bs4 import BeautifulSoup
@@ -11,6 +12,7 @@ FALLBACK_ICON = (
     "https://static-cdn.sr.se/images/2071/138fda3c-4e35-48e0-8fdb-e2ea8ef44758.jpg"
 )
 FEED_TITLE = "Sommar & Vinter i P1 – inofficiellt RSS-flöde"
+FEED_URL = "https://yourserv.er/podcast.xml"
 OUTPUT_FILE = "podcast.xml"
 IMAGE_SIZE = 2048
 
@@ -28,6 +30,30 @@ def fetch_program_image():
     except Exception as e:
         print(f"⚠️ Kunde inte hämta kanalbild: {e}")
     return FALLBACK_ICON
+
+
+def generate_podcast_guid(feed_url):
+    # Strip protocol and trailing slash
+    url = feed_url.replace("https://", "").replace("http://", "").rstrip("/")
+    namespace = uuid.UUID("ead4c236-bf58-58c6-a2c6-a6b28d128cb6")
+    return str(uuid.uuid5(namespace, url))
+
+
+def add_podcast_guid_to_rss(xml_path, guid):
+    with open(xml_path, "r", encoding="utf-8") as f:
+        xml = f.read()
+    soup = BeautifulSoup(xml, "xml")
+
+    channel = soup.find("channel")
+    if channel:
+        # Kontrollera om redan finns
+        if not channel.find("podcast:guid"):
+            tag = soup.new_tag("podcast:guid")
+            tag.string = guid
+            channel.insert(1, tag)  # Efter <title>
+    # Spara tillbaka
+    with open(xml_path, "w", encoding="utf-8") as f:
+        f.write(str(soup))
 
 
 def clean_image_url(url):
@@ -108,12 +134,12 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
 
     fg.title(FEED_TITLE)
     fg.link(href=PROGRAM_URL, rel="alternate")
-    fg.link(
-        href="https://yourserv.er/podcast.xml", rel="self", type="application/rss+xml"
-    )
+    fg.link(href=FEED_URL, rel="self", type="application/rss+xml")
     fg.language("sv-SE")
+    fg.logo(fetch_program_image())
     fg.generator("python-feedgen")
     fg.description("Automatiskt RSS-flöde genererat från Sveriges Radios webbsida.")
+    fg.id(FEED_URL)
     fg.podcast.itunes_author("Sveriges Radio")
     fg.podcast.itunes_category("Society & Culture")
     fg.podcast.itunes_explicit("no")
@@ -137,6 +163,8 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
         fe.content(content=html, type="CDATA")
 
     fg.rss_file(filename, pretty=True)
+    guid = generate_podcast_guid(FEED_URL)
+    add_podcast_guid_to_rss(filename, guid)
     print(f"✅ RSS-flöde sparat som {filename}")
 
 
