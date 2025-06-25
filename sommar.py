@@ -7,6 +7,7 @@ import uuid
 import requests
 from bs4 import BeautifulSoup
 from feedgen.feed import FeedGenerator
+from lxml import etree
 
 BASE_URL = "https://www.sverigesradio.se"
 PROGRAM_URL = BASE_URL + "/avsnitt?programid=2071"
@@ -32,6 +33,13 @@ def fetch_program_image():
     except Exception as e:
         print(f"⚠️ Kunde inte hämta kanalbild: {e}")
     return FALLBACK_ICON
+
+
+def tidy_xml(xml_path):
+    parser = etree.XMLParser(remove_blank_text=True)
+    with open(xml_path, "rb") as f:
+        tree = etree.parse(f, parser)
+    tree.write(xml_path, pretty_print=True, xml_declaration=True, encoding="utf-8")
 
 
 def get_mp3_size(url):
@@ -147,6 +155,7 @@ def parse_duration(abbr_text):
     total_sec = h * 3600 + m * 60
     return str(total_sec)
 
+
 def fetch_episodes():
     resp = requests.get(PROGRAM_URL)
     soup = BeautifulSoup(resp.content, "html.parser")
@@ -206,6 +215,27 @@ def fetch_episodes():
     return episodes
 
 
+def fix_itunes_explicit(xml_path):
+    with open(xml_path, "r", encoding="utf-8") as f:
+        xml = f.read()
+    # Byt ut alla <itunes:explicit>no</itunes:explicit> till <itunes:explicit>false</itunes:explicit>
+    xml = re.sub(
+        r"<itunes:explicit>\s*no\s*</itunes:explicit>",
+        r"<itunes:explicit>false</itunes:explicit>",
+        xml,
+        flags=re.IGNORECASE,
+    )
+    # (Om du skulle ha TRUE, byt ut eventuellt "yes" mot "true" också)
+    xml = re.sub(
+        r"<itunes:explicit>\s*yes\s*</itunes:explicit>",
+        r"<itunes:explicit>true</itunes:explicit>",
+        xml,
+        flags=re.IGNORECASE,
+    )
+    with open(xml_path, "w", encoding="utf-8") as f:
+        f.write(xml)
+
+
 def generate_rss(episodes, filename=OUTPUT_FILE):
     fg = FeedGenerator()
     fg.load_extension("podcast")
@@ -247,6 +277,8 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     ensure_podcast_namespace(filename)
     add_podcast_guid_to_rss(filename, guid)
     postprocess_images(filename)
+    fix_itunes_explicit(filename)
+    tidy_xml(filename)
     print(f"✅ RSS-flöde sparat som {filename}")
 
 
