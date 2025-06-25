@@ -134,20 +134,18 @@ def get_image_preset(img_base_url):
 
 
 def parse_duration(abbr_text):
-    # Hanterar t.ex. "59 min", "1 timme 2 min", "65 min"
     abbr_text = abbr_text.lower().replace("–", "-")
-    # Matcha "X tim(me|mar) Y min" eller bara "Y min"
-    match = re.match(r"(?:(\d+)\s*tim(?:me|mar)?)?\s*(\d+)\s*min", abbr_text)
+    # "1 timme 2 min", "2 timmar 5 min", "59 min", "2 tim"
+    h, m = 0, 0
+    # Försök hitta timmar och minuter
+    match = re.search(r"(\d+)\s*tim", abbr_text)
     if match:
-        h = int(match.group(1) or 0)
-        m = int(match.group(2) or 0)
-        # Om fler än 59 minuter, konvertera till timmar+minuter
-        h += m // 60
-        m = m % 60
-        return f"{h:01d}:{m:02d}:00"
-    # Fångar "X min" där X kan vara över 59
-    match = re.match
-
+        h = int(match.group(1))
+    match = re.search(r"(\d+)\s*min", abbr_text)
+    if match:
+        m = int(match.group(1))
+    total_sec = h * 3600 + m * 60
+    return str(total_sec)
 
 def fetch_episodes():
     resp = requests.get(PROGRAM_URL)
