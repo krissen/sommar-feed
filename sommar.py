@@ -7,20 +7,28 @@ from feedgen.feed import FeedGenerator
 
 BASE_URL = "https://www.sverigesradio.se"
 PROGRAM_URL = BASE_URL + "/avsnitt?programid=2071"
-FALLBACK_ICON = BASE_URL + "/static/img/sverigesradio-icon-192.png"
+FALLBACK_ICON = (
+    "https://static-cdn.sr.se/images/2071/138fda3c-4e35-48e0-8fdb-e2ea8ef44758.jpg"
+)
 FEED_TITLE = "Sommar & Vinter i P1 – inofficiellt RSS-flöde"
 OUTPUT_FILE = "podcast.xml"
+IMAGE_SIZE = 2048
+
 
 def fetch_program_image():
     try:
         resp = requests.get(PROGRAM_URL)
         soup = BeautifulSoup(resp.content, "html.parser")
-        tag = soup.find("link", rel="image_src")
-        if tag and tag.get("href"):
-            return tag["href"]
+        # Leta efter kvadratisk programikon
+        img_el = soup.select_one(".program-menu__image-wrapper .image--square img")
+        if img_el and img_el.get("src"):
+            base_img = clean_image_url(img_el["src"])
+            # return get_image_preset(base_img)
+            return base_img
     except Exception as e:
         print(f"⚠️ Kunde inte hämta kanalbild: {e}")
     return FALLBACK_ICON
+
 
 def clean_image_url(url):
     """Returnerar endast .jpg/.png-delen av URL."""
@@ -30,6 +38,17 @@ def clean_image_url(url):
     if match:
         return match.group(1)
     return url  # fallback: returnera som den är
+
+
+def get_image_preset(img_base_url):
+    size = IMAGE_SIZE
+    url = f"{img_base_url}?preset={size}x{size}"
+    r = requests.head(url)
+    if r.status_code == 200:
+        return url
+    # fallback: använd orginal url utan preset
+    return img_base_url
+
 
 def fetch_episodes():
     resp = requests.get(PROGRAM_URL)
@@ -66,29 +85,34 @@ def fetch_episodes():
                         image_url = BASE_URL + image_url
                 # Rensa preset eller andra querystrings
                 image_url = clean_image_url(image_url)
+                # image_url = get_image_preset(image_url_clean)
 
-
-            episodes.append({
-                "title": title,
-                "link": page_link,
-                "audio": audio_url,
-                "date": pub_date,
-                "description": description,
-                "image": image_url,
-            })
+            episodes.append(
+                {
+                    "title": title,
+                    "link": page_link,
+                    "audio": audio_url,
+                    "date": pub_date,
+                    "description": description,
+                    "image": image_url,
+                }
+            )
         except Exception as e:
             print(f"⚠️ Fel vid parsning: {e}")
     return episodes
 
+
 def generate_rss(episodes, filename=OUTPUT_FILE):
     fg = FeedGenerator()
-    fg.load_extension('podcast')
+    fg.load_extension("podcast")
 
     fg.title(FEED_TITLE)
     fg.link(href=PROGRAM_URL, rel="alternate")
-    fg.link(href="https://yourserv.er/podcast.xml", rel="self", type="application/rss+xml")
-    fg.language('sv-SE')
-    fg.generator('python-feedgen')
+    fg.link(
+        href="https://yourserv.er/podcast.xml", rel="self", type="application/rss+xml"
+    )
+    fg.language("sv-SE")
+    fg.generator("python-feedgen")
     fg.description("Automatiskt RSS-flöde genererat från Sveriges Radios webbsida.")
     fg.podcast.itunes_author("Sveriges Radio")
     fg.podcast.itunes_category("Society & Culture")
@@ -107,13 +131,15 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
         fe.enclosure(ep["audio"], 0, "audio/mpeg")
         fe.podcast.itunes_subtitle(ep["description"])
         fe.podcast.itunes_explicit("no")
-        html = f'<p>{ep["description"]}</p><img src="{ep["image"]}" alt="{ep["title"]}"/>'
+        html = (
+            f'<p>{ep["description"]}</p><img src="{ep["image"]}" alt="{ep["title"]}"/>'
+        )
         fe.content(content=html, type="CDATA")
 
     fg.rss_file(filename, pretty=True)
     print(f"✅ RSS-flöde sparat som {filename}")
 
+
 if __name__ == "__main__":
     episodes = fetch_episodes()
     generate_rss(episodes)
-
