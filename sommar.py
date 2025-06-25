@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+import random
 import re
+import time
 import uuid
 
 import requests
@@ -32,11 +34,49 @@ def fetch_program_image():
     return FALLBACK_ICON
 
 
+def get_mp3_size(url):
+    try:
+        for attempt in range(2):  # Testa max två gånger
+            r = requests.get(url, stream=True, timeout=10)
+            length = int(r.headers.get("Content-Length", 0))
+            if length > 0:
+                break
+            pause = random.uniform(0.25, 1.5)
+            time.sleep(pause)
+        return length
+    except Exception as e:
+        print(f"⚠️ Fel vid hämtning av filstorlek: {e}")
+        return 0
+
+
 def generate_podcast_guid(feed_url):
     # Strip protocol and trailing slash
     url = feed_url.replace("https://", "").replace("http://", "").rstrip("/")
     namespace = uuid.UUID("ead4c236-bf58-58c6-a2c6-a6b28d128cb6")
     return str(uuid.uuid5(namespace, url))
+
+
+def postprocess_images(xml_path, preset="2048x2048"):
+    with open(xml_path, "r", encoding="utf-8") as f:
+        xml = f.read()
+
+    # Byt ut alla ...jpg eller ...png (utan ? och med valfria querys) mot ...jpg?preset=2048x2048
+    # men undvik att lägga till preset två gånger
+    def add_preset(m):
+        url = m.group(1)
+        if "preset=" not in url:
+            return f'{url}?preset={preset}"'
+        else:
+            return m.group(0)
+
+    # itunes:image
+    xml = re.sub(
+        r'(https://static-cdn\.sr\.se/images/[0-9]+/[a-f0-9\-]+\.(?:jpg|png))"',
+        add_preset,
+        xml,
+    )
+    with open(xml_path, "w", encoding="utf-8") as f:
+        f.write(xml)
 
 
 def ensure_podcast_namespace(xml_path):
@@ -93,6 +133,22 @@ def get_image_preset(img_base_url):
     return img_base_url
 
 
+def parse_duration(abbr_text):
+    # Hanterar t.ex. "59 min", "1 timme 2 min", "65 min"
+    abbr_text = abbr_text.lower().replace("–", "-")
+    # Matcha "X tim(me|mar) Y min" eller bara "Y min"
+    match = re.match(r"(?:(\d+)\s*tim(?:me|mar)?)?\s*(\d+)\s*min", abbr_text)
+    if match:
+        h = int(match.group(1) or 0)
+        m = int(match.group(2) or 0)
+        # Om fler än 59 minuter, konvertera till timmar+minuter
+        h += m // 60
+        m = m % 60
+        return f"{h:01d}:{m:02d}:00"
+    # Fångar "X min" där X kan vara över 59
+    match = re.match
+
+
 def fetch_episodes():
     resp = requests.get(PROGRAM_URL)
     soup = BeautifulSoup(resp.content, "html.parser")
@@ -104,6 +160,8 @@ def fetch_episodes():
             desc_el = item.select_one(".episode-list-item__description p")
             mp3_el = item.select_one("a[href*='topsy/ljudfil']")
             img_el = item.select_one("img")
+            abbr_el = item.select_one(".audio-heading__meta abbr")
+
             if not (title_el and date_el and mp3_el):
                 continue
 
@@ -130,6 +188,10 @@ def fetch_episodes():
                 image_url = clean_image_url(image_url)
                 # image_url = get_image_preset(image_url_clean)
 
+            duration = None
+            if abbr_el:
+                duration = parse_duration(abbr_el.text.strip())
+
             episodes.append(
                 {
                     "title": title,
@@ -138,6 +200,7 @@ def fetch_episodes():
                     "date": pub_date,
                     "description": description,
                     "image": image_url,
+                    "duration": duration,
                 }
             )
         except Exception as e:
@@ -163,15 +226,17 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     fg.podcast.itunes_image(fetch_program_image())
 
     for ep in episodes:
+        size = get_mp3_size(ep["audio"])
         fe = fg.add_entry()
         fe.title(ep["title"])
         fe.link(href=ep["link"])
+        fe.podcast.itunes_duration(ep.get("duration", "00:00:00"))
         fe.podcast.itunes_image(ep["image"])
         fe.podcast.itunes_summary(ep["description"])
         fe.pubDate(ep["date"])
         fe.guid(ep["link"], permalink=True)
         fe.description(ep["description"])
-        fe.enclosure(ep["audio"], 0, "audio/mpeg")
+        fe.enclosure(ep["audio"], size, "audio/mpeg")
         fe.podcast.itunes_subtitle(ep["description"])
         fe.podcast.itunes_explicit("no")
         html = (
@@ -183,6 +248,7 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     guid = generate_podcast_guid(FEED_URL)
     ensure_podcast_namespace(filename)
     add_podcast_guid_to_rss(filename, guid)
+    postprocess_images(filename)
     print(f"✅ RSS-flöde sparat som {filename}")
 
 
