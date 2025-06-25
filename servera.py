@@ -7,11 +7,17 @@ from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-PORT = 443
+from dotenv import load_dotenv
+
 FILE = Path("podcast.xml")
 CERT_FILE = Path("ssl/fullchain.pem")
 KEY_FILE = Path("ssl/privkey.pem")
 LOG_FILE = Path("server.log")
+
+load_dotenv()
+if "PORT" not in os.environ:
+    raise RuntimeError("PORT saknas! Skapa .env eller exportera variabeln.")
+PORT = os.environ["PORT"]
 
 
 def log(msg):

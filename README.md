@@ -51,22 +51,16 @@ Det här projektet inkluderar en systemd-tjänst för att automatiskt starta och
 
 ### Förutsättningar
 
-**Python-miljö:** /home/someuser/.conda/envs/sommar/bin/python3
-
-**Katalog:** /yourpath/sommar-feed
-
-**Användare:** someuser
-
 **Certifikat:** Ligger i ssl/ i projektkatalogen.
 
 ### Installation & aktivering
 
-Lägg till servicefilen (som exempel, se `./sommar-server.service`)
+Lägg till servicefilen (som exempel, skapa `./sommar-server.service` med `gen_service.py`
 
 Se till att användarens tjänster startar oberoende av inloggning
 
 ```bash
-loginctl enable-linger someuser
+loginctl enable-linger USER
 ```
 
 Ladda om user systemd och aktivera tjänsten

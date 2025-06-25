@@ -10,6 +10,7 @@ from email.utils import format_datetime
 
 import requests
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 from feedgen.feed import FeedGenerator
 from lxml import etree
 
@@ -18,13 +19,17 @@ PROGRAM_URL = BASE_URL + "/avsnitt?programid=2071"
 CHANNEL_URL = "https://www.sverigesradio.se/sommar-i-p1"
 API_IMAGE_URL = "https://static-cdn.sr.se/images/2071/138fda3c-4e35-48e0-8fdb-e2ea8ef44758.jpg?preset=api-itunes-presentation-image"
 FEED_TITLE = "Sommar & Vinter i P1 – inofficiellt RSS-flöde"
-FEED_URL = "https://yourserv.er/podcast.xml"
 FALLBACK_ICON = (
     "https://static-cdn.sr.se/images/2071/138fda3c-4e35-48e0-8fdb-e2ea8ef44758.jpg"
 )
 OUTPUT_FILE = "podcast.xml"
 CACHE_FILE = "cache.json"
 DEBUG = False
+
+load_dotenv()
+if "FEED_URL" not in os.environ:
+    raise RuntimeError("FEED_URL saknas! Skapa .env eller exportera variabeln.")
+FEED_URL = os.environ["FEED_URL"]
 
 
 def load_cache():

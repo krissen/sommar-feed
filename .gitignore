@@ -3,3 +3,4 @@ ssl
 __pycache__
 server.log
 cache.json
+.env
