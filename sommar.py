@@ -337,7 +337,7 @@ def generate_rss(episodes, filename=OUTPUT_FILE):
     fg.language("sv")
     fg.logo(fetch_program_image())
     fg.generator("python-feedgen")
-    desc_plain = "Inofficiellt RSS-flöde automatiskt genererat från Sveriges Radio. Alla Sommarprat finns att lyssna på i Sveriges Radio Play. Inofficiell feed som hämtar avsnitt från Sveriges Radios webbsida."
+    desc_plain = "Inofficiellt RSS-flöde automatiskt genererat från Sveriges Radio. Alla Sommarprat finns att lyssna på i Sveriges Radio Play."
     fg.podcast.itunes_summary(desc_plain)
     fg.description(desc_plain)
     fg.copyright("Copyright Sveriges Radio 2025. All rights reserved.")
