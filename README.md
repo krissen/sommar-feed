@@ -5,7 +5,7 @@ Detta projekt skapar ett automatiserat, icke-officiellt RSS-flöde för programm
 Projektet består av flera delar som tillsammans gör det enkelt att:
 
 - Skrapa avsnittsdata direkt från Sveriges Radios publika webbplats ([Sommar & Vinter i P1](https://www.sverigesradio.se/avsnitt?programid=2071))
-- Generera ett komplett podcast-RSS-flöde (`podcast.xml`) som kan användas i valfri poddspelare. Antingen använder du den rakt av som den är (kopierar till din podd-spelare), eller så läser du vidare.
+- Generera ett komplett podcast-RSS-flöde (`sommar_i_p1.xml`) som kan användas i valfri poddspelare. Antingen använder du den rakt av som den är (kopierar till din podd-spelare), eller så läser du vidare.
 - Hosta podcast-feeden själv, inklusive HTTPS-stöd, med hjälp av en enkel Python-server
 - Automatisera flödet så att det alltid är aktuellt, med hjälp av en systemd user-tjänst
 - Hantera konfiguration och personliga inställningar via `.env`-filer för att separera privat information från kod
@@ -17,13 +17,13 @@ Syftet är att du snabbt ska kunna köra igång flödet, anpassa det efter eget 
 
 | Fil                   | Funktion                                              |
 |-----------------------|------------------------------------------------------|
-| `sommar.py`             | Skrapar och genererar `podcast.xml`                  |
+| `sommar.py`             | Skrapar och genererar `sommar_i_p1.xml`                  |
 | `servera.py`            | Enkel HTTPS-server för att dela feeden               |
 | `gen_service.py`        | Skapar systemd service-fil utifrån `.env`            |
 | `requirements.txt`      | Lista av Python-beroenden                            |
 | `.env` / `.env.example`   | Inställningsfil / exempel               |
 | `cache.json`            | Lokal cache för snabba körningar (skapas av `sommar.py`)                     |
-| `podcast.xml`           | Genererat RSS-flöde (skapas av `sommar.py`)                        |
+| `sommar_i_p1.xml`           | Genererat RSS-flöde (skapas av `sommar.py`)                        |
 | `sommar-server.service` | Systemd-tjänstfil för att köra `servera.py` automatiskt (skapas av `gen_service.py`) |
 | `server.log`          | Loggfil för `servera.py` (genereras av `servera.py`                            |
 
@@ -57,7 +57,7 @@ Eller manuellt:
 pip install beautifulsoup4 feedgen python-dotenv requests
 ```
 
-Ovan är allt du behöver för att köra `sommar.py` och generera `podcast.xml` -scriptet. För att använda `servera.py` och/eller `gen_service`, fortsätt läsa.
+Ovan är allt du behöver för att köra `sommar.py` och generera `sommar_i_p1.xml` -scriptet. För att använda `servera.py` och/eller `gen_service`, fortsätt läsa.
 
 ## Konfiguration: Miljövariabler med `.env`
 
@@ -76,8 +76,8 @@ Redigera `.env` så att värdena passar din miljö:
 DEBUG=False                    # print debug information
 
 # sommar.py
-FEED_URL=YOURFEEDADDRESS.xml    # https://server/podcast.xml
-RSS_FILE=podcast.xml           # the name of the podcast-feed -file
+FEED_URL=YOURFEEDADDRESS.xml    # https://server/sommar_i_p1.xml
+RSS_FILE=sommar_i_p1.xml           # the name of the podcast-feed -file
 
 # servera.py
 PORT=443                        # port to serve from
@@ -115,12 +115,12 @@ Detta hanteras av Python-skriptet `sommar.py`, som:
 - Cachar informationen lokalt för snabbare framtida körningar (`cache.json`), och för att inte belasta sverigesradio.se i onödan
 - Säkerställer att bara nya eller uppdaterade avsnitt hämtas vid nästa körning; annars används cachad information (avsnitt som tagits bort från officiella sidan avlägsnas också från cachen)
 
-Du behöver någon manuell hämtning; inga `mp3`-filer eller omslag lagras lokalt – allt sker automatiskt när du kör `sommar.py` och länkarna i `podcast.xml` leder alla till sverigesradio.se.
+Du behöver någon manuell hämtning; inga `mp3`-filer eller omslag lagras lokalt – allt sker automatiskt när du kör `sommar.py` och länkarna i `sommar_i_p1.xml` leder alla till sverigesradio.se.
 
-#### Generera podcast RSS -filen (`podcast.xml`)
+#### Generera podcast RSS -filen (`sommar_i_p1.xml`)
 
 När skrapningen är klar skapas ett fullständigt RSS-flöde enligt podcast-standard.
-Detta RSS-flöde (`podcast.xml`) kan importeras i valfri podcastspelare och fungerar likt den officiella feeden (men innehåller endast publika avsnitt). `MP3`-filen som poddcast-spelaren hämtar, laddas alltså ner direkt från sverigesradio.se.
+Detta RSS-flöde (`sommar_i_p1.xml`) kan importeras i valfri podcastspelare och fungerar likt den officiella feeden (men innehåller endast publika avsnitt). `MP3`-filen som poddcast-spelaren hämtar, laddas alltså ner direkt från sverigesradio.se.
 
 Skriptet `sommar.py`:
 
@@ -137,18 +137,18 @@ python sommar.py
 
 *Innan du kör scriptet bör du ha gjort de inställningar som beskrevs ovan.*
 
-Efter körning finns `podcast.xml` i projektkatalogen.
+Efter körning finns `sommar_i_p1.xml` i projektkatalogen.
 
 Exempel på innehåll:
 
 <details>
-<summary>podcast.xml (klicka för att vika ut)</summary>
+<summary>sommar_i_p1.xml (klicka för att vika ut)</summary>
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <rss xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
   <channel>
-    <podcast:guid>b418f769-6e81-54cf-a64c-e0aa57b9d78e</podcast:guid>
+    <podcast:guid>e57e3ed2-3132-5068-a98d-7e0f81c99a25</podcast:guid>
 <title>Sommar &amp; Vinter i P1 – inofficiellt RSS-flöde</title>
     <link>https://www.sverigesradio.se/sommar-i-p1</link>
     <description>Inofficiellt RSS-flöde automatiskt genererat från Sveriges Radio. Alla Sommarprat finns att lyssna på i Sveriges Radio Play.</description>
@@ -162,7 +162,7 @@ Exempel på innehåll:
       <link>https://www.sverigesradio.se/sommar-i-p1</link>
     </image>
     <language>sv</language>
-    <lastBuildDate>Thu, 26 Jun 2025 06:57:29 +0000</lastBuildDate>
+    <lastBuildDate>Thu, 26 Jun 2025 17:30:03 +0000</lastBuildDate>
     <itunes:author>Sveriges Radio</itunes:author>
     <itunes:category text="Society &amp; Culture"/>
     <itunes:image href="https://static-cdn.sr.se/images/2071/138fda3c-4e35-48e0-8fdb-e2ea8ef44758.jpg?preset=api-itunes-presentation-image"/>
