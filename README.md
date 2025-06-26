@@ -1,5 +1,12 @@
 # Inofficiellt RSS-flöde för "Sommar & Vinter i P1"
 
+> ⚠️ **Vill du göra det enkelt för dig?  
+> 💡 Gå till [sr-restored](https://www.sr-restored.se) istället.**  
+> <https://github.com/lindell/sr-restored>
+
+
+Vill du skapa RSS-flödet själv? *Read on, my friend, read on!*
+
 Detta projekt skapar ett automatiserat, icke-officiellt RSS-flöde för programmet [Sommar & Vinter i P1](https://www.sverigesradio.se/avsnitt?programid=2071) från [Sveriges Radio](https://www.sverigesradio.se).
 
 Projektet består av flera delar som tillsammans gör det enkelt att:
