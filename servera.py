@@ -109,7 +109,7 @@ if __name__ == "__main__":
 
     # Ställ in port
     port_env = os.environ.get("PORT")
-    PORT = if port_env else 443  # Standardport om inte angiven
+    PORT = int(port_env) if port_env else 443
 
     # Läs in sökvägar till certifikat från .env
     cert_env = os.environ.get("SSL_CHAIN")
@@ -119,7 +119,7 @@ if __name__ == "__main__":
 
     # Ställ in sökväg till RSS-filen
     rss_env = os.environ.get("RSS_FILE")
-    RSS_FILE = if rss_env else Path("podcast.xml")
+    RSS_FILE = Path(rss_env) if rss_env else Path("podcast.xml")
 
     # Kolla vi har SSL -filerna
     if not check_ssl_files(CERT_FILE, KEY_FILE):
