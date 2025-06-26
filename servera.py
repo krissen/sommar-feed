@@ -84,7 +84,9 @@ def scheduler():
 
 class SimpleXMLHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/podcast.xml":
+        # Se till att RSS_FILE är en Path
+        requested_file = "/" + RSS_FILE.name
+        if self.path == requested_file:
             if RSS_FILE.exists():
                 self.send_response(200)
                 self.send_header("Content-type", "application/xml; charset=utf-8")
@@ -98,7 +100,6 @@ class SimpleXMLHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             self.wfile.write(b"Invalid path.")
-
     def log_message(self, format, *args):
         # Skriv till din egen log istället för stderr
         log(f"{self.client_address[0]} - {format % args}")
@@ -119,7 +120,7 @@ if __name__ == "__main__":
 
     # Ställ in sökväg till RSS-filen
     rss_env = os.environ.get("RSS_FILE")
-    RSS_FILE = Path(rss_env) if rss_env else Path("podcast.xml")
+    RSS_FILE = Path(rss_env) if rss_env else Path("sommar_i_p1.xml")
 
     # Kolla vi har SSL -filerna
     if not check_ssl_files(CERT_FILE, KEY_FILE):
@@ -136,7 +137,7 @@ if __name__ == "__main__":
     httpd = HTTPServer(("0.0.0.0", PORT), SimpleXMLHandler)
     httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
 
-    log(f"🌐 Serving https://0.0.0.0:{PORT}/podcast.xml with SSL")
+    log(f"🌐 Serving https://0.0.0.0:{PORT}/{RSS_FILE} with SSL")
 
     # Registrera signalhanteraren
     signal.signal(signal.SIGTERM, handle_sigterm)

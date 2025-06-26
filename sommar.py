@@ -31,16 +31,16 @@ debug_env = os.environ.get("DEBUG", "false").strip().lower()
 DEBUG = debug_env in ("1", "true", "yes", "on")
 
 # Ställ in output-fil
-rss_env = os.environ.get("RSS_FILE", "podcast.xml").strip()
-OUTPUT_FILE = rss_env if rss_env else "podcast.xml"
+rss_env = os.environ.get("RSS_FILE", "sommar_i_p1.xml").strip()
+OUTPUT_FILE = rss_env if rss_env else "sommar_i_p1.xml"
 
 # Ställ in cache-fil
 cache_env = os.environ.get("CACHE_FILE", "cache.json").strip()
 CACHE_FILE = cache_env if cache_env else "cache.json"
 
 # Ställ in feed url
-feed_env = os.environ.get("FEED_URL", "localhost/podcast.xml").strip()
-FEED_URL = feed_env if feed_env else "localhost/podcast.xml"
+feed_env = os.environ.get("FEED_URL", "localhost/sommar_i_p1.xml").strip()
+FEED_URL = feed_env if feed_env else "localhost/sommar_i_p1.xml"
 
 
 def load_cache():
