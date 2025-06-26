@@ -22,14 +22,25 @@ FEED_TITLE = "Sommar & Vinter i P1 – inofficiellt RSS-flöde"
 FALLBACK_ICON = (
     "https://static-cdn.sr.se/images/2071/138fda3c-4e35-48e0-8fdb-e2ea8ef44758.jpg"
 )
-OUTPUT_FILE = "podcast.xml"
-CACHE_FILE = "cache.json"
-DEBUG = False
+
 
 load_dotenv()
-if "FEED_URL" not in os.environ:
-    raise RuntimeError("FEED_URL saknas! Skapa .env eller exportera variabeln.")
-FEED_URL = os.environ["FEED_URL"]
+
+# Ställ in debug
+debug_env = os.environ.get("DEBUG", "false").strip().lower()
+DEBUG = debug_env in ("1", "true", "yes", "on")
+
+# Ställ in output-fil
+rss_env = os.environ.get("RSS_FILE", "podcast.xml").strip()
+OUTPUT_FILE = rss_env if rss_env else "podcast.xml"
+
+# Ställ in cache-fil
+cache_env = os.environ.get("CACHE_FILE", "cache.json").strip()
+CACHE_FILE = cache_env if cache_env else "cache.json"
+
+# Ställ in feed url
+feed_env = os.environ.get("FEED_URL", "localhost/podcast.xml").strip()
+FEED_URL = feed_env if feed_env else "localhost/podcast.xml"
 
 
 def load_cache():

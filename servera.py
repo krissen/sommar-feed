@@ -11,9 +11,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-FILE = Path("podcast.xml")
-CERT_FILE = Path("ssl/fullchain.pem")
-KEY_FILE = Path("ssl/privkey.pem")
 LOG_FILE = Path("server.log")
 
 
@@ -88,11 +85,11 @@ def scheduler():
 class SimpleXMLHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/podcast.xml":
-            if FILE.exists():
+            if RSS_FILE.exists():
                 self.send_response(200)
                 self.send_header("Content-type", "application/xml; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(FILE.read_bytes())
+                self.wfile.write(RSS_FILE.read_bytes())
             else:
                 self.send_response(404)
                 self.end_headers()
@@ -109,12 +106,20 @@ class SimpleXMLHandler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     load_dotenv()
-    if "PORT" not in os.environ:
-        error_msg = "⛔️ PORT-variabeln saknas! Ange den i .env-filen eller som miljövariabel."
-        log(error_msg)
-        raise RuntimeError(error_msg)
-        exit(1)
-    PORT = int(os.environ["PORT"])
+
+    # Ställ in port
+    port_env = os.environ.get("PORT")
+    PORT = if port_env else 443  # Standardport om inte angiven
+
+    # Läs in sökvägar till certifikat från .env
+    cert_env = os.environ.get("SSL_CHAIN")
+    key_env = os.environ.get("SSL_KEY")
+    CERT_FILE = Path(cert_env) if cert_env else Path("ssl/fullchain.pem")
+    KEY_FILE = Path(key_env) if key_env else Path("ssl/privkey.pem")
+
+    # Ställ in sökväg till RSS-filen
+    rss_env = os.environ.get("RSS_FILE")
+    RSS_FILE = if rss_env else Path("podcast.xml")
 
     # Kolla vi har SSL -filerna
     if not check_ssl_files(CERT_FILE, KEY_FILE):
